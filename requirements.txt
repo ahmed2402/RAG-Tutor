@@ -1,0 +1,14 @@
+langchain_community
+langchain-core
+streamlit
+python-dotenv
+langchain_community
+langchain-ollama
+pypdf
+chromadb
+faiss-cpu
+langchain_google_genai
+google-generativeai
+langchain_groq
+groq
+sentence_transformers

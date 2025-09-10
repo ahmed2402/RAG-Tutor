@@ -1,0 +1,4 @@
+data/
+venv/
+vector_stores/
+.env
