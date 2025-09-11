@@ -31,7 +31,7 @@ def ingest_pdf_to_chroma(pdf_path, collection_name="book_collection"):
     chunks = text_splitter.split_documents(docs)
 
     # 4) embeddings
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")    
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-l6-v2")    
     # 5) persist to Chroma
     vectordb = Chroma.from_documents(
         documents=chunks,
@@ -42,23 +42,23 @@ def ingest_pdf_to_chroma(pdf_path, collection_name="book_collection"):
     vectordb.persist()
     return vectordb
 
-def retrieve_from_chroma(query, collection_name="book_collection", persist_directory="vector_stores"):
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-    db = Chroma(
-            collection_name=collection_name,
-            embedding_function=embeddings,
-            persist_directory=persist_directory
-    )
-    retrieved_results = db.similarity_search(query)
-    return retrieved_results
+# def retrieve_from_chroma(query, collection_name="book_collection", persist_directory="vector_stores"):
+#     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
+#     db = Chroma(
+#             collection_name=collection_name,
+#             embedding_function=embeddings,
+#             persist_directory=persist_directory
+#     )
+#     retrieved_results = db.similarity_search(query)
+#     return retrieved_results
 
-def main():
-    pdf_path = "data/book_collection/11.-The-Time-Machine-H.G.-Wells.pdf"
-    collection_name = "book_collection"
-    vectordb = ingest_pdf_to_chroma(pdf_path, collection_name)
-    print(f"PDF '{pdf_path}' has been ingested into Chroma collection '{collection_name}'.")
+# def main():
+#     pdf_path = "data/book_collection/11.-The-Time-Machine-H.G.-Wells.pdf"
+#     collection_name = "book_collection"
+#     vectordb = ingest_pdf_to_chroma(pdf_path, collection_name)
+#     print(f"PDF '{pdf_path}' has been ingested into Chroma collection '{collection_name}'.")
         
-if __name__ == "__main__":
-    query = "You can show black is white by argument,” said Filby, “but you will never convince me."
-    results = retrieve_from_chroma(query)
-    print(results[0].page_content)
+# if __name__ == "__main__":
+#     query = "You can show black is white by argument,” said Filby, “but you will never convince me."
+#     results = retrieve_from_chroma(query)
+#     print(results[0].page_content)
