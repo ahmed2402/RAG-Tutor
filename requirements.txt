@@ -12,3 +12,4 @@ google-generativeai
 langchain_groq
 groq
 sentence_transformers
+rank_bm25

@@ -23,22 +23,31 @@ st.markdown(
 with st.sidebar:
     st.header("Upload your book")
     uploaded = st.file_uploader("Choose a PDF file", type=["pdf"])
+    vectordb, docs = None, None
     if uploaded:
         save_path = f"data/book_collection/{uploaded.name}"
-        with st.spinner("Saving and ingesting your book..."):
-            with open(save_path, "wb") as f:
-                f.write(uploaded.getbuffer())
-            vectordb = ingest_pdf_to_chroma(save_path, collection_name=uploaded.name)
+        if "qa" not in st.session_state or st.session_state.get("last_uploaded") != uploaded.name:
+            with st.spinner("Saving and ingesting your book..."):
+                with open(save_path, "wb") as f:
+                    f.write(uploaded.getbuffer())
+                # ingest now returns vectordb, docs
+                vectordb, docs = ingest_pdf_to_chroma(save_path, collection_name=uploaded.name)
+        else:
+            # If already ingested, try to get from session_state if available
+            vectordb = st.session_state.get("vectordb")
+            docs = st.session_state.get("docs")
         if vectordb:
             st.success("Book ingested and converted to vector store!")
-            qa = build_chain(vectordb, k=4)
-        else:
-            qa = None
+            st.session_state.qa = build_chain(vectordb, docs, k=4)
+            st.session_state.last_uploaded = uploaded.name
+            st.session_state.vectordb = vectordb
+            st.session_state.docs = docs
+        qa = st.session_state.qa    
     else:
         qa = None
 
 st.markdown("---")
-
+print("Debugging QA:", qa)
 if qa:
     st.subheader("Ask a question from your book")
     col1, col2 = st.columns([4, 1])
@@ -46,13 +55,24 @@ if qa:
         question = st.text_input("Type your question here:", key="question_input")
     with col2:
         ask_clicked = st.button("Ask", key="ask_button", use_container_width=True)
+        st.markdown(
+            """
+            <style>
+            div[data-testid="stButton"] { margin-top: 1.5rem !important; }
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
     if ask_clicked and question:
         with st.spinner("Searching for the answer..."):
             start = time.process_time()
+            result = {}
             try:
-                result = qa.invoke({'input': question})
-                answer_text = result.get("answer")
+                result = qa({"input": question})
+                # print(f"Result from chain : {result}")
+                answer_text = result.content
+                print(f"Answer from result : {answer_text}")
                 response_time = time.process_time() - start
                 if answer_text:
                     st.success("**Answer:**")
@@ -62,18 +82,20 @@ if qa:
                     st.warning("No answer found in your book.")
             except Exception as e:
                 st.error(f"An error occurred: {e}")
-            # show sources
-            sources = result.get("source_documents", [])
-            if sources:
-                st.markdown("#### Sources")
-                for i, doc in enumerate(sources):
-                    meta = doc.metadata
-                    with st.expander(
-                        f"Source {i+1}: page {meta.get('page','?')} — {meta.get('chapter','') or meta.get('source','') }"
-                    ):
-                        st.write(doc.page_content[:500] + ("..." if len(doc.page_content) > 500 else ""))
-                        st.code(meta)
-            else:
-                st.info("No sources found for this answer.")
+
+            # # show sources
+            # sources = result.get("source_documents", [])
+            # if sources:
+            #     st.markdown("#### Sources")
+            #     for i, doc in enumerate(sources):
+            #         meta = doc.metadata
+            #         with st.expander(
+            #             f"Source {i+1}: page {meta.get('page_number','?')} — "
+            #             f"{meta.get('chapter','') or meta.get('source','')}"
+            #         ):
+            #             st.write(doc.page_content[:500] + ("..." if len(doc.page_content) > 500 else ""))
+            #             st.code(meta)
+            # else:
+            #     st.info("No sources found for this answer.")
 else:
     st.info("Please upload a PDF book from the sidebar to get started.")
