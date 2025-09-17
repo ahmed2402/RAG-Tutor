@@ -166,6 +166,6 @@ def ingest_pdf_to_faiss(
     faiss_index_path = f"vector_stores/{collection_name}_faiss"
     vectordb.save_local(faiss_index_path)
 
-    print(f"[ingest] persisted collection '{collection_name}' to {persist_directory}")
+    print(f"[ingest] persisted collection '{collection_name}'")
     print(f"Response Time : ", time.process_time() - start)
     return vectordb, chunk_docs
