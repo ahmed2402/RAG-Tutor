@@ -1,4 +1,8 @@
 import os
+import re
+import time
+from uuid import uuid4
+from langchain.schema import Document
 from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_community.document_loaders.pdf import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -9,56 +13,160 @@ load_dotenv()
 
 os.environ["HUGGINGFACEHUB_API_TOKEN"]
 
-def extract_chapter_section(text):
-    # very simple heuristic: look for "Chapter" or "CHAPTER" headings on the page
-    for line in text.splitlines()[:6]:
-        if 'chapter' in line.lower():
-            return line.strip()
-    return None
+#Global Variables
+DEFAULT_HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+PERSIST_DIR = "vector_stores"
+DEFAULT_CHUNK_SIZE = 800
+DEFAULT_CHUNK_OVERLAP = 100
 
-def ingest_pdf_to_chroma(pdf_path, collection_name="book_collection"):
+# heading detection patterns (order matters: Chapter -> Section -> numbered headings)
+HEADING_PATTERNS = [
+    re.compile(r'^(Chapter|CHAPTER)\b.*', flags=re.IGNORECASE | re.MULTILINE),
+    re.compile(r'^(Section|SECTION)\b.*', flags=re.IGNORECASE | re.MULTILINE),
+    # numeric section like "2.1 Introduction" or "3 Summary"
+    re.compile(r'^\d+(?:\.\d+)*\s+.+', flags=re.MULTILINE),
+    re.compile(r'^\d+(?:\.\d+)*\s+[A-Za-z].*', flags=re.MULTILINE),
+    # Pattern to exclude "chapter. Here's the link:" text
+    re.compile(r'^chapter\.\s+Here\'s\s+the\s+link:', flags=re.IGNORECASE | re.MULTILINE),
+]
 
+
+def _find_headings(text):
+    """
+    Return list of (pos, heading_text) sorted by pos.
+    We deduplicate matches by start index to avoid duplicates from multiple patterns.
+    """
+    matches = {}
+    for pat in HEADING_PATTERNS:
+        for m in pat.finditer(text):
+            matches[m.start()] = m.group().strip()
+    items = sorted([(pos, matches[pos]) for pos in matches])
+    return items
+
+
+def _split_page_by_headings(page_text):
+    """
+    Split a single page by detected headings.
+    Returns list of (heading_text, fragment_text).
+    If no headings found, returns [("", page_text)].
+    """
+    headings = _find_headings(page_text)
+    if not headings:
+        return [("", page_text.strip())]
+
+    fragments = []
+    # Add prefix before first heading if it exists
+    first_pos = headings[0][0]
+    if first_pos > 0:
+        prefix = page_text[:first_pos].strip()
+        if prefix:
+            fragments.append(("", prefix))
+
+    # create fragments from each heading start to next heading start (or end)
+    starts = [pos for pos, _ in headings] + [len(page_text)]
+    for i, (pos, heading_text) in enumerate(headings):
+        start = pos
+        end = starts[i + 1]
+        segment = page_text[start:end].strip()
+        fragments.append((heading_text, segment))
+
+    return fragments
+
+
+def ingest_pdf_to_chroma(
+    pdf_path,
+    collection_name: str | None = None,
+    persist_directory: str = PERSIST_DIR,
+    hf_model: str = DEFAULT_HF_MODEL,
+    chunk_size: int = DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
+):
+    """
+    Ingest PDF into Chroma with enriched metadata per chunk:
+      - book_title, chapter, section, page_number, chunk_id, source
+
+    Splitting strategy:
+      - load PDF pages (PyPDFLoader gives page-level docs)
+      - for each page: split by headings (Chapter/Section/numbered headings)
+      - for each fragment: if fragment is long, further split using RecursiveCharacterTextSplitter
+    """
+
+    if collection_name is None:
+        collection_name = os.path.splitext(os.path.basename(pdf_path))[0]
+
+    start = time.process_time()
+    # 1) Load pages
     loader = PyPDFLoader(pdf_path)
-    docs = loader.load()                  
-    for d in docs:
-        chapter = extract_chapter_section(d.page_content)
-        if chapter:
-            d.metadata['chapter'] = chapter
+    pages = loader.load()  # each doc typically has .page_content and metadata['page']
+    print(f"[ingest] loaded {len(pages)} pages from {pdf_path}")
 
+    # 2) Prepare splitter for long fragments
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
 
-    # 3) chunk
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = text_splitter.split_documents(docs)
+    # 3) Walk pages and create chunk Documents with metadata
+    chunk_docs = []
+    current_chapter = None  # carry-forward chapter across pages if found
+    for page_doc in pages:
+        page_text = page_doc.page_content or ""
+        page_num = page_doc.metadata.get("page", None)
+        # split page into semantic fragments by headings
+        fragments = _split_page_by_headings(page_text)
 
-    # 4) embeddings
-    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-l6-v2")    
-    # 5) persist to Chroma
+        for frag_idx, (heading, frag_text) in enumerate(fragments):
+            # determine chapter and section from heading
+            chapter = None
+            section = None
+            if heading:
+                low = heading.lower()
+                if "chapter" in low:
+                    chapter = heading
+                    current_chapter = chapter
+                elif "section" in low:
+                    section = heading
+                else:
+                    # numeric heading likely a section "2.1 Intro"
+                    if re.match(r'^\d+(?:\.\d+)*\s+', heading):
+                        section = heading
+
+            # if no explicit chapter on this fragment, inherit the last seen chapter
+            if chapter is None:
+                chapter = current_chapter
+
+            # further split the fragment if it's large (using the text_splitter)
+            # note: split_text returns a list of strings
+            small_chunks = (
+                text_splitter.split_text(frag_text)
+                if len(frag_text) > chunk_size
+                else [frag_text]
+            )
+
+            for sidx, chunk_text in enumerate(small_chunks):
+                chunk_text = chunk_text.strip()
+                if not chunk_text:
+                    continue
+                chunk_meta = {
+                    "book_title": collection_name,
+                    "chapter": chapter or "",
+                    "section": section or "",
+                    "page_number": page_num,
+                    "source": os.path.basename(pdf_path),
+                    "chunk_id": f"{os.path.basename(pdf_path)}_p{page_num}_f{frag_idx}_s{sidx}_{uuid4().hex[:8]}",
+                }
+                doc = Document(page_content=chunk_text, metadata=chunk_meta)
+                chunk_docs.append(doc)
+
+    print(f"[ingest] created {len(chunk_docs)} chunk documents (ready for embeddings)")
+
+    # 4) Create embeddings and persist to Chroma
+    embeddings = HuggingFaceEmbeddings(model_name=hf_model)
     vectordb = Chroma.from_documents(
-        documents=chunks,
+        documents=chunk_docs,
         embedding=embeddings,
         collection_name=collection_name,
-        persist_directory="vector_stores"
+        persist_directory=persist_directory,
     )
-    vectordb.persist()
-    return vectordb
-
-# def retrieve_from_chroma(query, collection_name="book_collection", persist_directory="vector_stores"):
-#     embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-mpnet-base-v2")
-#     db = Chroma(
-#             collection_name=collection_name,
-#             embedding_function=embeddings,
-#             persist_directory=persist_directory
-#     )
-#     retrieved_results = db.similarity_search(query)
-#     return retrieved_results
-
-# def main():
-#     pdf_path = "data/book_collection/11.-The-Time-Machine-H.G.-Wells.pdf"
-#     collection_name = "book_collection"
-#     vectordb = ingest_pdf_to_chroma(pdf_path, collection_name)
-#     print(f"PDF '{pdf_path}' has been ingested into Chroma collection '{collection_name}'.")
-        
-# if __name__ == "__main__":
-#     query = "You can show black is white by argument,” said Filby, “but you will never convince me."
-#     results = retrieve_from_chroma(query)
-#     print(results[0].page_content)
+    print(f"[ingest] persisted collection '{collection_name}' to {persist_directory}")
+    print(f"Response Time : ", time.process_time() - start)
+    return vectordb, chunk_docs
