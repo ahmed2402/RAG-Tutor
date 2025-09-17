@@ -1,7 +1,7 @@
 import streamlit as st
 import os
 import time
-from ingest import ingest_pdf_to_chroma
+from ingest import ingest_pdf_to_faiss
 from chain import build_chain
 
 st.set_page_config(page_title="RAG Tutor", page_icon="📚", layout="wide")
@@ -34,7 +34,7 @@ with st.sidebar:
                 with open(save_path, "wb") as f:
                     f.write(uploaded.getbuffer())
                 # ingest now returns vectordb, docs
-                vectordb, docs = ingest_pdf_to_chroma(save_path, collection_name=uploaded.name)
+                vectordb, docs = ingest_pdf_to_faiss(save_path, collection_name=uploaded.name)
         else:
             # If already ingested, try to get from session_state if available
             vectordb = st.session_state.get("vectordb")

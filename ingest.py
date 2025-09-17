@@ -7,7 +7,7 @@ from langchain_community.document_loaders import PyPDFDirectoryLoader
 from langchain_community.document_loaders.pdf import PyPDFLoader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -15,7 +15,6 @@ os.environ["HUGGINGFACEHUB_API_TOKEN"]
 
 #Global Variables
 DEFAULT_HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
-PERSIST_DIR = "vector_stores"
 DEFAULT_CHUNK_SIZE = 800
 DEFAULT_CHUNK_OVERLAP = 100
 
@@ -73,10 +72,9 @@ def _split_page_by_headings(page_text):
     return fragments
 
 
-def ingest_pdf_to_chroma(
+def ingest_pdf_to_faiss(
     pdf_path,
     collection_name: str | None = None,
-    persist_directory: str = PERSIST_DIR,
     hf_model: str = DEFAULT_HF_MODEL,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     chunk_overlap: int = DEFAULT_CHUNK_OVERLAP,
@@ -161,12 +159,13 @@ def ingest_pdf_to_chroma(
 
     # 4) Create embeddings and persist to Chroma
     embeddings = HuggingFaceEmbeddings(model_name=hf_model)
-    vectordb = Chroma.from_documents(
+    vectordb = FAISS.from_documents(
         documents=chunk_docs,
-        embedding=embeddings,
-        collection_name=collection_name,
-        persist_directory=None
+        embedding=embeddings
     )
+    faiss_index_path = f"vector_stores/{collection_name}_faiss"
+    vectordb.save_local(faiss_index_path)
+
     print(f"[ingest] persisted collection '{collection_name}' to {persist_directory}")
     print(f"Response Time : ", time.process_time() - start)
     return vectordb, chunk_docs
