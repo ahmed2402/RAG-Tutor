@@ -109,6 +109,10 @@ This will open the application in your web browser.
     *   The LLM generates an answer, adhering to the prompt's instructions for context-only responses and inline citations.
     *   The answer and source documents are displayed in the Streamlit interface.
 
-## License
+## 👨‍💻 Developer
 
-This project is open-sourced under the MIT License. Feel free to modify and distribute.
+This project was developed by **Ahmed Raza**.
+
+- **LinkedIn**: [https://www.linkedin.com/in/ahmvd/](https://www.linkedin.com/in/ahmvd/)
+- **Email**: [ahmedraza312682@gmail.com](mailto:ahmedraza312682@gmail.com)
+- **GitHub**: [ahmed2402](https://github.com/ahmed2402)
