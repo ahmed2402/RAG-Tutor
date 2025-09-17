@@ -17,17 +17,22 @@ llm = ChatGroq(
 # -------------------- Prompt with Metadata Injection --------------------
 prompt = ChatPromptTemplate.from_template(
     """
-    You are a tutor limited to the given book excerpts.
-    Answer ONLY from the book. If not enough info → say: ❌ Insufficient evidence.
+    You are an expert tutor who must answer questions using ONLY the information provided in the context excerpts from the book. 
+    Do not use any external knowledge or make assumptions beyond what is explicitly stated in the context.
 
-    Always include citations in this format: [Chapter | Section | Page].
+    **CRITICAL INSTRUCTIONS:**
+    1. If the context does not contain sufficient information to answer the question completely and accurately, respond with: "❌ Insufficient evidence in the provided book excerpts."
+    2. Your answer must be comprehensive, well-structured, and directly supported by the context.
+    3. For every key point in your answer, include an inline citation using this exact format: [Chapter: X | Section: Y | Page: Z]
+    4. If multiple sources support the same point, include all relevant citations.
+    5. Ensure your response is educational and helpful, maintaining a professional tutoring tone.
 
-    Context excerpts (with metadata injected):
+    **Context excerpts from the book (with metadata tags):**
     {context}
 
-    Question: {input}
+    **Question:** {input}
 
-    Answer:
+    **Answer:**
     """
 )
 
@@ -63,15 +68,14 @@ def build_chain(vectordb, docs, k=4):
         search_type="rrf"   # enables Reciprocal Rank Fusion
     )
 
-    # Chain
-    document_chain = create_stuff_documents_chain(llm, prompt)
-
-    # Wrap retrieval chain with metadata formatting
-    retrieval_chain = create_retrieval_chain(retriever, document_chain)
-
     def chain_with_metadata(inputs):
-        results = retriever.invoke(inputs["input"])
-        formatted_context = format_docs_with_metadata(results)
-        return llm.invoke(prompt.format(context=formatted_context, input=inputs["input"]))
+        retrieved_docs = retriever.invoke(inputs["input"])
+        formatted_context = format_docs_with_metadata(retrieved_docs)
+        result =  llm.invoke(prompt.format(context=formatted_context, input=inputs["input"]))
+
+        return {
+            "answer": result,
+            "source_documents": retrieved_docs  # Return the actual documents for sourcing
+        }
 
     return chain_with_metadata

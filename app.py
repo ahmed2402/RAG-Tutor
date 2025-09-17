@@ -38,7 +38,7 @@ with st.sidebar:
             docs = st.session_state.get("docs")
         if vectordb:
             st.success("Book ingested and converted to vector store!")
-            st.session_state.qa = build_chain(vectordb, docs, k=4)
+            st.session_state.qa = build_chain(vectordb, docs, k=6)
             st.session_state.last_uploaded = uploaded.name
             st.session_state.vectordb = vectordb
             st.session_state.docs = docs
@@ -70,9 +70,7 @@ if qa:
             result = {}
             try:
                 result = qa({"input": question})
-                # print(f"Result from chain : {result}")
-                answer_text = result.content
-                print(f"Answer from result : {answer_text}")
+                answer_text = result["answer"].content
                 response_time = time.process_time() - start
                 if answer_text:
                     st.success("**Answer:**")
@@ -83,19 +81,23 @@ if qa:
             except Exception as e:
                 st.error(f"An error occurred: {e}")
 
-            # # show sources
-            # sources = result.get("source_documents", [])
-            # if sources:
-            #     st.markdown("#### Sources")
-            #     for i, doc in enumerate(sources):
-            #         meta = doc.metadata
-            #         with st.expander(
-            #             f"Source {i+1}: page {meta.get('page_number','?')} — "
-            #             f"{meta.get('chapter','') or meta.get('source','')}"
-            #         ):
-            #             st.write(doc.page_content[:500] + ("..." if len(doc.page_content) > 500 else ""))
-            #             st.code(meta)
-            # else:
-            #     st.info("No sources found for this answer.")
+            # show sources
+            sources = result.get("source_documents", [])
+            if sources:
+                with st.expander("#### Sources", expanded=False):
+                    for i, doc in enumerate(sources):
+                        meta = doc.metadata
+                        citation = f"[Chapter: {meta.get('chapter','?')} | Section: {meta.get('section','?')} | Page: {meta.get('page_number','?')}]"
+                        
+                        st.markdown(f"**Source {i+1}:** {citation}")
+                        st.write(doc.page_content[:500] + ("..." if len(doc.page_content) > 500 else ""))
+                        # Instead of dumping full dict, show structured metadata
+                        st.markdown(f"**Book:** {meta.get('book_title','?')}")
+                        st.markdown(f"**Chapter:** {meta.get('chapter','—')}")
+                        st.markdown(f"**Section:** {meta.get('section','—')}")
+                        st.markdown(f"**Page:** {meta.get('page_number','?')}")
+                        st.markdown("---")
+            else:
+                st.info("No sources found for this answer.")
 else:
     st.info("Please upload a PDF book from the sidebar to get started.")

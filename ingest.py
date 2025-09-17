@@ -24,7 +24,10 @@ HEADING_PATTERNS = [
     re.compile(r'^(Chapter|CHAPTER)\b.*', flags=re.IGNORECASE | re.MULTILINE),
     re.compile(r'^(Section|SECTION)\b.*', flags=re.IGNORECASE | re.MULTILINE),
     # numeric section like "2.1 Introduction" or "3 Summary"
-    re.compile(r'^\d+(?:\.\d+)*\s+.+', flags=re.MULTILINE)
+    re.compile(r'^\d+(?:\.\d+)*\s+.+', flags=re.MULTILINE),
+    re.compile(r'^\d+(?:\.\d+)*\s+[A-Za-z].*', flags=re.MULTILINE),
+    # Pattern to exclude "chapter. Here's the link:" text
+    re.compile(r'^chapter\.\s+Here\'s\s+the\s+link:', flags=re.IGNORECASE | re.MULTILINE),
 ]
 
 
@@ -167,8 +170,3 @@ def ingest_pdf_to_chroma(
     print(f"[ingest] persisted collection '{collection_name}' to {persist_directory}")
     print(f"Response Time : ", time.process_time() - start)
     return vectordb, chunk_docs
-
-
-# if __name__ == "__main__":
-
-#     ingest_pdf_to_chroma("data/book_collection/python-basics-sample-chapters.pdf", "python-basics-sample-chapters.pdf")
