@@ -71,6 +71,11 @@ streamlit run app.py
 
 This will open the application in your web browser.
 
+## 🌐 Deployment
+
+This application is deployed and can be accessed at: [https://rag-tutor-by-ahmed.streamlit.app/](https://rag-tutor-by-ahmed.streamlit.app/)
+
+
 ## 📁 Project Structure
 
 ```
