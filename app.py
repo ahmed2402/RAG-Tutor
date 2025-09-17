@@ -1,4 +1,5 @@
 import streamlit as st
+import os
 import time
 from ingest import ingest_pdf_to_chroma
 from chain import build_chain
