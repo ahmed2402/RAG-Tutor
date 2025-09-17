@@ -165,7 +165,7 @@ def ingest_pdf_to_chroma(
         documents=chunk_docs,
         embedding=embeddings,
         collection_name=collection_name,
-        persist_directory=persist_directory,
+        persist_directory=None
     )
     print(f"[ingest] persisted collection '{collection_name}' to {persist_directory}")
     print(f"Response Time : ", time.process_time() - start)
