@@ -25,7 +25,9 @@ with st.sidebar:
     uploaded = st.file_uploader("Choose a PDF file", type=["pdf"])
     vectordb, docs = None, None
     if uploaded:
-        save_path = f"data/book_collection/{uploaded.name}"
+        save_dir = "data/book_collection"
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, uploaded.name)
         if "qa" not in st.session_state or st.session_state.get("last_uploaded") != uploaded.name:
             with st.spinner("Saving and ingesting your book..."):
                 with open(save_path, "wb") as f:
